@@ -1,0 +1,136 @@
+name: run-list
+
+# ===========================================================================
+# The fast job runs on every push and pull request to main. The full job runs
+# from the "Run workflow" button; uncomment `schedule` below to also run it
+# weekly. Some enterprise-managed accounts block GitHub-hosted runners - on
+# one of those, comment `push` and `pull_request` back out.
+# ===========================================================================
+on:
+  workflow_dispatch:          # "Run workflow" button - always available
+
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # schedule:
+  #   - cron: "0 6 * * 1"     # the heavy job, Mondays 06:00 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: run-list-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ----------------------------------------------------------------- fast
+  # Runs on every push once enabled. No system services, no downloads beyond
+  # pip - Java, node and npx are already on the runner. ~3 minutes.
+  fast:
+    name: fast run-list (no services)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install "apache-beam>=2.76" "pyarrow>=18" "numpy>=2.0" pyspark
+
+      - name: Versions actually used
+        run: |
+          python --version
+          java -version 2>&1 | head -1
+          node --version
+
+      - name: Run the fast run-list
+        run: bash .github/scripts/run_list.sh fast
+
+      - name: Check every relative markdown link resolves
+        run: python .github/scripts/check_links.py
+
+  # ----------------------------------------------------------------- full
+  # All 21 items. Heavier: installs the gcloud emulators, Redis, Airflow and a
+  # Kafka broker at ~/kafka (kafka_basics.py does NOT download one). ~15 minutes.
+  #
+  # Deliberately NOT on every push - that would burn Actions minutes for
+  # little extra signal. Schedule + manual button only.
+  full:
+    name: full run-list (emulators, Kafka, Redis, Airflow)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Redis
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq redis-server
+          # The scripts start their own redis; make sure the packaged service
+          # is not already holding the port.
+          sudo systemctl stop redis-server || true
+
+      - name: Install the gcloud CLI and its emulators
+        # Plain apt rather than an action: no auth, no project id, and the
+        # emulators are ordinary packages. find_gcloud() in the scripts wants
+        # /usr/bin/gcloud, which is exactly where apt puts it.
+        run: |
+          sudo apt-get install -y -qq apt-transport-https ca-certificates gnupg curl
+          curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+            | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+          echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+            | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            google-cloud-cli \
+            google-cloud-cli-pubsub-emulator \
+            google-cloud-cli-bigtable-emulator \
+            google-cloud-cli-firestore-emulator
+          /usr/bin/gcloud --version | head -2
+
+      - name: Install Kafka at ~/kafka
+        # kafka_basics.py expects a release already unpacked at ~/kafka and
+        # exits if it is missing. These are the commands that error prints.
+        # Resolve the version: downloads.apache.org keeps only current ones.
+        run: |
+          V=$(curl -s https://downloads.apache.org/kafka/ \
+                | grep -oE '[0-9]+[.][0-9]+[.][0-9]+/' | tr -d / | sort -V | tail -1)
+          curl -fsSL "https://downloads.apache.org/kafka/$V/kafka_2.13-$V.tgz" | tar -xz -C "$HOME"
+          mv "$HOME/kafka_2.13-$V" "$HOME/kafka"
+          cd "$HOME/kafka" && bin/kafka-storage.sh format \
+            -t "$(bin/kafka-storage.sh random-uuid)" -c config/server.properties --standalone
+
+      - name: Create the Airflow virtualenv
+        # Its own venv, deliberately: Airflow and Beam have genuinely
+        # incompatible pins (cryptography, grpcio).
+        run: |
+          python -m venv "$HOME/venvs/airflow"
+          "$HOME/venvs/airflow/bin/pip" install --quiet --upgrade pip
+          "$HOME/venvs/airflow/bin/pip" install --quiet "apache-airflow==3.3.2"
+
+      - name: Run the full run-list
+        run: bash .github/scripts/run_list.sh full
+
+      - name: Assert no emulator was left running
+        # Encodes the bug found on 2026-09-27: proc.terminate() killed the
+        # gcloud WRAPPER and orphaned the java child, which kept the port.
+        # Five orphans were left behind, the oldest running over five hours.
+        run: bash .github/scripts/check_no_leaks.sh

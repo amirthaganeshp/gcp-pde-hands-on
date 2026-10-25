@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# OPT-IN git pre-push hook: run the fast run-list before pushing.
+#
+#   cp .github/scripts/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+#
+# Adds ~77s to every push. Remove with: rm .git/hooks/pre-push
+# Skip once with: git push --no-verify
+set -uo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT" || exit 0
+
+echo "pre-push: fast run-list + link check (skip with --no-verify)"
+
+python .github/scripts/check_links.py || exit 1
+bash .github/scripts/run_list.sh fast   || exit 1
+
+echo "pre-push: OK"

@@ -1,0 +1,25 @@
+config {
+  type: "incremental",
+  schema: "analytics",
+  description: "The same aggregate built incrementally, keyed for idempotent re-runs.",
+  uniqueKey: ["trip_date", "start_station"],
+  bigquery: {
+    partitionBy: "trip_date",
+    clusterBy: ["start_station"],
+    updatePartitionFilter: "trip_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)"
+  }
+}
+
+SELECT
+  trip_date,
+  start_station,
+  COUNT(*)                      AS trips,
+  ROUND(AVG(duration_min), 2)   AS avg_duration_min
+FROM ${ref("stg_trips")}
+
+-- Only on an incremental run, restrict to a re-processing window.
+-- uniqueKey makes this a MERGE, so an overlapping window is safe:
+-- re-running updates rows rather than duplicating them.
+${when(incremental(), `WHERE trip_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)`)}
+
+GROUP BY trip_date, start_station

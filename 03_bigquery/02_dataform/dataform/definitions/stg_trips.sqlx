@@ -1,0 +1,25 @@
+config {
+  type: "view",
+  schema: "analytics",
+  description: "Cleaned trips. One row per trip, invalid rows removed.",
+  columns: {
+    trip_id: "Business key - the MERGE key downstream.",
+    trip_date: "Event date, used as the partition column.",
+    start_station: "Cluster column.",
+    duration_min: "Trip length in minutes. Always > 0 here."
+  }
+}
+
+SELECT
+  trip_id,
+  DATE(event_time)                AS trip_date,
+  event_time,
+  start_station,
+  end_station,
+  bike_type,
+  member,
+  duration_min,
+  distance_km
+FROM ${ref("trips_raw")}
+WHERE duration_min > 0
+  AND start_station IS NOT NULL

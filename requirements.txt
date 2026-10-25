@@ -1,0 +1,16 @@
+apache-beam>=2.76
+google-cloud-pubsub>=2.41
+confluent-kafka>=2.5
+pyarrow>=18
+numpy>=2.0
+matplotlib>=3.9
+# 04_managed_spark - local PySpark (also needs Java 17+)
+pyspark>=4.2
+# 06_storage_decisions - the Python clients only. redis-server and the gcloud
+# Bigtable/Firestore emulators are system packages (apt), not pip packages.
+redis>=8.1
+google-cloud-bigtable>=2.47
+google-cloud-firestore>=2.32
+# Apache Airflow is deliberately NOT here: it lives in its own venv
+# (~/venvs/airflow) because its pins conflict with Beam's.
+# See 05_orchestration/01_composer/README.md.

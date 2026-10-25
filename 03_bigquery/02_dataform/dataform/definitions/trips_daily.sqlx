@@ -1,0 +1,27 @@
+config {
+  type: "table",
+  schema: "analytics",
+  description: "Station x day aggregate. The reporting table.",
+  assertions: {
+    uniqueKey: ["trip_date", "start_station"],
+    nonNull: ["trip_date", "start_station", "trips"],
+    rowConditions: [
+      "trips > 0",
+      "avg_duration_min BETWEEN 0 AND 600"
+    ]
+  },
+  bigquery: {
+    partitionBy: "trip_date",
+    clusterBy: ["start_station"]
+  }
+}
+
+SELECT
+  trip_date,
+  start_station,
+  COUNT(*)                                   AS trips,
+  ROUND(AVG(duration_min), 2)                AS avg_duration_min,
+  ROUND(SUM(distance_km), 2)                 AS total_distance_km,
+  COUNTIF(member)                            AS member_trips
+FROM ${ref("stg_trips")}
+GROUP BY trip_date, start_station

@@ -1,0 +1,10 @@
+# Dataform project settings.
+#
+# NOTE: defaultProject is a PLACEHOLDER. Nothing here ever connects to
+# BigQuery - `dataform compile` resolves names and dependencies offline,
+# so the project id only has to exist as a string.
+dataformCoreVersion: 3.0.0
+defaultProject: pde-learning-placeholder
+defaultDataset: analytics
+defaultLocation: US
+defaultAssertionDataset: analytics_assertions

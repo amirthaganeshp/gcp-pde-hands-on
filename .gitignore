@@ -1,0 +1,12 @@
+data/
+*.pyc
+__pycache__/
+.venv/
+outputs/
+.ipynb_checkpoints/
+
+# Dataform - created by `dataform install` / `dataform init-creds`.
+# .df-credentials.json holds REAL BigQuery credentials and must never be committed.
+node_modules/
+.df-credentials.json
+**/definitions/.df/

@@ -1,0 +1,13 @@
+config {
+  type: "assertion",
+  schema: "analytics_assertions",
+  description: "A custom assertion: no trip may be dated in the future."
+}
+
+-- An assertion FAILS if it returns any rows.
+SELECT
+  trip_date,
+  start_station,
+  trips
+FROM ${ref("trips_daily")}
+WHERE trip_date > CURRENT_DATE()

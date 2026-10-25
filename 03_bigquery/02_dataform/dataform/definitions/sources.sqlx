@@ -1,0 +1,7 @@
+config {
+  type: "declaration",
+  database: "pde-learning-placeholder",
+  schema: "raw",
+  name: "trips_raw",
+  description: "The landed bike-share stream. Declared, not managed by Dataform."
+}
